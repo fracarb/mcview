@@ -1,186 +1,185 @@
 # MCVIEW
 
-MCVIEW e un visualizzatore NetCDF libero e open source scritto in codice
-compatibile con MATLAB e GNU Octave. L'obiettivo e unire l'immediatezza di
-`ncview` con un modello di visualizzazione progressivamente piu ricco, ispirato
-alla flessibilita di psyplot, senza richiedere Python per l'esecuzione.
+MCVIEW is a free and open-source NetCDF viewer written in code compatible with
+both MATLAB and GNU Octave. It aims to combine the immediacy of `ncview` with a
+progressively richer visualization model inspired by the flexibility of
+psyplot, without requiring Python at runtime.
 
-Il progetto e una reimplementazione indipendente: non contiene codice copiato
-da ncview o psyplot.
+This project is an independent reimplementation. It does not contain code
+copied from ncview or psyplot.
 
-## Stato attuale
+## Features
 
-Questa prima versione e un MVP funzionante. Permette di:
+MCVIEW currently provides:
 
-- aprire file `.nc`, `.nc4` e `.cdf`;
-- aprire piu file, ordinarli dalla coordinata temporale e concatenare
-  automaticamente variabili compatibili lungo tempo;
-- leggere ricorsivamente variabili nei gruppi NetCDF4;
-- esplorare variabili e sottogruppi NetCDF4 in un albero espandibile e
-  comprimibile, preservando percorsi completi come `/ocean/temp`;
-- mantenere assi vuoti finche non viene scelta esplicitamente una variabile;
-- visualizzare scalari, serie 1D e campi 2D;
-- scegliere liberamente le dimensioni X e Y;
-- scorrere le dimensioni rimanenti per estrarre una slice;
-- selezionare rapidamente i piani XY, XZ e YZ usando nomi e attributi CF;
-- selezionare automaticamente l'asse ortogonale al piano e scegliere la
-  posizione del taglio per indice o coordinata fisica, mostrando indice,
-  coordinata e unita della slice;
-- mantenere fissa la quota spaziale del taglio e scorrere o animare una
-  dimensione separata, per esempio XZ a Y=32 lungo il tempo;
-- avanzare o arretrare la quota del taglio con frecce dedicate, senza
-  modificare la dimensione temporale selezionata;
-- avanzare, arretrare o animare le slice lungo qualsiasi dimensione esclusa;
-- controllare velocita, direzione e loop dell'animazione e seguire file in crescita;
-- conservare in cache le ultime 24 slice per rendere fluide le animazioni;
-- limitare la cache a 64, 256 o 512 MB;
-- ridurre automaticamente le slice molto grandi conservando la corrispondenza
-  con gli indici originali;
-- usare variabili-coordinate dimensionali e coordinate ausiliarie dichiarate
-  dall'attributo CF `coordinates`;
-- mostrare nomi estesi e unita di misura sugli assi e sulla variabile;
-- etichettare la colorbar con nome della variabile e unita di misura;
-- convertire assi temporali CF come `days since 2000-01-01` in date leggibili;
-- rappresentare correttamente calendari CF non gregoriani `360_day`,
-  `noleap`/`365_day` e `all_leap`/`366_day`, senza convertirli in date
-  gregoriane inesatte;
-- consultare attributi globali, di variabile e delle coordinate;
-- riconoscere packing, `_FillValue`, `missing_value`, `valid_min/max/range`;
-- cambiare colormap e impostare limiti colore automatici o manuali;
-- calcolare range globale rapido/completo, percentile 2-98 o simmetrico su zero;
-- mostrare istogrammi, scala cromatica Log10 e colormap divergente;
-- invertire colori e asse Y, applicare enfasi ai valori bassi/alti e interpolazione;
-- leggere il valore di una cella cliccando sulla mappa;
-- sovrapporre fino a cinque profili 1D, usare assi logaritmici ed esportare CSV;
-- confrontare due variabili affiancandole o calcolando differenza e rapporto;
-- riconoscere mappe lon/lat, griglie curvilinee 2D e passaggio del dateline;
-- scegliere automaticamente X=longitudine e Y=latitudine dai metadati CF,
-  anche quando il file dichiara le dimensioni nell'ordine `lat, lon`;
-- visualizzare proiezioni lon/lat o Mercatore con coste Natural Earth 1:10m,
-  incluse le isole minori e senza Mapping Toolbox, attivabili da checkbox e
-  con colore selezionabile;
-- esportare la vista corrente in PNG;
-- vedere tipo, intervallo, media e selezione `start/count` corrente.
+- support for `.nc`, `.nc4`, and `.cdf` files;
+- multi-file collections, automatic time-coordinate sorting, and concatenation
+  of compatible variables along the time dimension;
+- recursive reading of variables stored in NetCDF4 groups;
+- an expandable tree browser for NetCDF4 groups and subgroups, while preserving
+  full paths such as `/ocean/temp`;
+- empty plot axes until a variable is explicitly selected;
+- scalar, 1D series, and 2D field visualization;
+- free selection of the X and Y dimensions;
+- slicing along every remaining dimension;
+- quick XY, XZ, and YZ plane selection based on CF names and attributes;
+- automatic selection of the axis orthogonal to the displayed plane, with cut
+  positions specified either by index or physical coordinate;
+- independent spatial-cut and scan dimensions, for example an XZ slice at
+  Y=32 animated over time;
+- dedicated controls for moving the spatial cut forward or backward without
+  changing the selected time frame;
+- forward, backward, and animated navigation along any excluded dimension;
+- animation speed, direction, loop control, and support for growing files;
+- a 24-slice cache for smooth animation, with configurable 64, 256, or 512 MB
+  memory limits;
+- automatic downsampling of very large slices while retaining their original
+  index mapping;
+- dimensional coordinate variables and auxiliary coordinates declared through
+  the CF `coordinates` attribute;
+- long names and units on plot axes, variables, and colorbars;
+- readable CF time axes such as `days since 2000-01-01`;
+- correct non-Gregorian CF calendars: `360_day`, `noleap`/`365_day`, and
+  `all_leap`/`366_day`, without converting them to inaccurate Gregorian dates;
+- global, variable, and coordinate attribute inspection;
+- support for packing, `_FillValue`, `missing_value`, and
+  `valid_min`/`valid_max`/`valid_range`;
+- selectable colormaps and automatic or manual color limits;
+- fast and complete global ranges, 2nd-98th percentiles, and ranges symmetric
+  around zero;
+- histograms, Log10 color scaling, and a diverging colormap;
+- color and Y-axis inversion, low/high-value emphasis, and interpolation;
+- point values obtained by clicking a map cell;
+- up to five overlaid 1D profiles, logarithmic axes, and CSV export;
+- side-by-side variable comparison, difference, and ratio;
+- longitude/latitude maps, 2D curvilinear grids, and dateline handling;
+- automatic X=longitude and Y=latitude selection from CF metadata, including
+  datasets whose dimensions are declared as `lat, lon`;
+- longitude/latitude and Mercator views with Natural Earth 1:10m coastlines,
+  including small islands, without requiring the Mapping Toolbox;
+- optional coastline display and selectable coastline colors;
+- PNG export;
+- display of data type, range, mean, and the current `start`/`count` selection.
 
-## Requisiti
+## Requirements
 
 ### GNU Octave
 
-Serve il pacchetto `netcdf`:
+The `netcdf` package is required:
 
 ```octave
-pkg install -forge netcdf   % solo la prima volta, se non e gia installato
-pkg load netcdf             % MCVIEW lo esegue automaticamente all'avvio
+pkg install -forge netcdf   % only once, if it is not already installed
+pkg load netcdf             % MCVIEW also runs this automatically at startup
 ```
 
-La prima versione e verificata automaticamente con GNU Octave 11.3.0 e
-`netcdf` 1.0.21.
+The project is automatically tested with GNU Octave 11.3.0 and `netcdf`
+1.0.21.
 
 ### MATLAB
 
-Non serve `pkg load`: MCVIEW rileva MATLAB e usa direttamente `ncinfo` e
-`ncread`. Il ramo MATLAB e progettato per usare esclusivamente API grafiche
-classiche, evitando App Designer e `uifigure`.
+No `pkg load` command is needed. MCVIEW detects MATLAB and directly uses
+`ncinfo` and `ncread`. The MATLAB implementation relies on classic graphics
+APIs and does not require App Designer or `uifigure`.
 
-## Avvio
+## Getting started
 
-Aggiungere la cartella del progetto al path e lanciare:
+Add the project directory to the MATLAB or Octave path, then run:
 
 ```matlab
 mcview
 ```
 
-oppure aprire direttamente un dataset:
+To open a dataset directly:
 
 ```matlab
-mcview('/percorso/al/file.nc')
+mcview('/path/to/file.nc')
 ```
 
-Per aprire da terminale tutti i file che corrispondono a un pattern wildcard:
+To open every file matching a wildcard pattern:
 
 ```matlab
-mcview('/percorso/esperimento/run_*.nc')
+mcview('/path/to/experiment/run_*.nc')
 ```
 
-Nella Command Window si puo usare anche la sintassi compatta in stile `ncview`:
+The compact `ncview`-style syntax is also available from the Command Window:
 
 ```matlab
 mcview file.nc
 mcview run_*.nc
 ```
 
-Il carattere `*` viene espanso direttamente da MCVIEW sia in MATLAB sia in
-Octave. I file trovati sono ordinati per nome e, quando contengono una
-coordinata temporale riconoscibile, vengono poi riordinati nel tempo e
-concatenati come una singola collezione. Anche `?` e supportato per indicare un
-singolo carattere, per esempio `mcview('run_??.nc')`. Se il pattern non trova
-file, MCVIEW mostra un errore esplicito nel terminale.
+MCVIEW expands `*` directly in MATLAB and Octave. Matching files are initially
+sorted by name and, when a recognizable time coordinate is present, reordered
+in time and concatenated into a single collection. The `?` wildcard matches one
+character, for example `mcview('run_??.nc')`. A pattern with no matches produces
+an explicit command-line error.
 
-Per concatenare piu file lungo una dimensione unlimited/temporale:
+An explicit file collection can also be provided:
 
 ```matlab
 mcview({'run_001.nc', 'run_002.nc', 'run_003.nc'})
 ```
 
-Il rilevamento del runtime e centralizzato in `mcv.isOctave`; il caricamento
-condizionale delle dipendenze avviene in `mcv.setupEnvironment`.
+Runtime detection is centralized in `mcv.isOctave`, while conditional
+dependency loading is handled by `mcv.setupEnvironment`.
 
-## Test
+## Testing
 
-Da Octave o MATLAB, nella cartella del progetto:
+Run the portable core test suite from MATLAB or Octave in the project folder:
 
 ```matlab
 addpath('tests')
 run_tests
 ```
 
-I test creano piccoli dataset NetCDF temporanei e verificano runtime,
-coordinate, file NetCDF classic, gruppi NetCDF4, selezione CF degli assi,
-ordine delle dimensioni, piani 3D, coste e concatenazione temporale multi-file.
+The tests generate small temporary NetCDF datasets and cover runtime detection,
+coordinates, classic NetCDF files, nested NetCDF4 groups, CF axis selection,
+dimension ordering, 3D planes, non-Gregorian calendars, coastlines, and
+multi-file time concatenation.
 
-Lo smoke test grafico, da eseguire con un backend grafico disponibile, e:
+Run the graphical smoke test when a graphics backend is available:
 
 ```matlab
 addpath('tests')
 run_gui_smoke_test
 ```
 
-La workflow `.github/workflows/ci.yml` esegue test core e grafici con Octave e
-test core/grafici con MATLAB. Nei repository GitHub privati il job MATLAB puo
-richiedere un MATLAB batch licensing token.
+The `.github/workflows/ci.yml` workflow runs core and graphical tests with
+Octave and MATLAB. MATLAB jobs in private repositories may require a MATLAB
+batch licensing token.
 
-## Architettura
+## Architecture
 
-- `mcview.m`: entry point pubblico;
-- `+mcv/resolveInputFiles.m`: espansione portabile di file e wildcard;
-- `+mcv/setupEnvironment.m`: compatibilita MATLAB/Octave e dipendenze;
-- `+mcv/createViewer.m`: interfaccia grafica portabile;
-- `+mcv/readVariableSlice.m`: selezione e lettura NetCDF;
-- `+mcv/mergeDatasetInfos.m`: catalogo e concatenazione multi-file;
-- `+mcv/flattenDatasetInfo.m`: scansione ricorsiva dei gruppi NetCDF4;
-- `+mcv/variableTreeRows.m`: albero portabile di gruppi e variabili;
-- `+mcv/decodeCFTime.m`: calendari temporali gregoriani e CF non gregoriani;
-- `+mcv/computeVariableRange.m`: range globali e campionamento rapido;
-- `+mcv/prepareGeographicSlice.m`: dateline e proiezione geografica;
-- `+mcv/coastlineData.m`: caricamento delle coste Natural Earth;
-- `data/natural_earth_10m_coastline.mat`: coste 1:10m in formato portabile;
-- `tools/import_natural_earth_coastline.m`: importatore shapefile senza toolbox;
-- `+mcv/readCurvilinearCoordinates.m`: coordinate CF ausiliarie 2D;
-- `+mcv/downsampleSlice.m`: riduzione adattiva per dataset molto grandi;
-- `.github/workflows/ci.yml`: verifica continua MATLAB/Octave;
-- `+mcv/prepareSlice.m`: normalizzazione dell'ordine dimensionale;
-- `tests/run_tests.m`: test di regressione portabili.
+- `mcview.m`: public entry point;
+- `+mcv/resolveInputFiles.m`: portable file and wildcard expansion;
+- `+mcv/setupEnvironment.m`: MATLAB/Octave compatibility and dependencies;
+- `+mcv/createViewer.m`: portable graphical interface;
+- `+mcv/readVariableSlice.m`: NetCDF selection and slice reading;
+- `+mcv/mergeDatasetInfos.m`: multi-file catalog and concatenation;
+- `+mcv/flattenDatasetInfo.m`: recursive NetCDF4 group traversal;
+- `+mcv/variableTreeRows.m`: portable group and variable tree;
+- `+mcv/decodeCFTime.m`: Gregorian and non-Gregorian CF calendars;
+- `+mcv/computeVariableRange.m`: global ranges and fast sampling;
+- `+mcv/prepareGeographicSlice.m`: dateline handling and map projection;
+- `+mcv/coastlineData.m`: Natural Earth coastline loading;
+- `data/natural_earth_10m_coastline.mat`: portable 1:10m coastline data;
+- `tools/import_natural_earth_coastline.m`: toolbox-free shapefile importer;
+- `+mcv/readCurvilinearCoordinates.m`: 2D CF auxiliary coordinates;
+- `+mcv/downsampleSlice.m`: adaptive downsampling for large datasets;
+- `.github/workflows/ci.yml`: continuous MATLAB/Octave validation;
+- `+mcv/prepareSlice.m`: dimension-order normalization;
+- `tests/run_tests.m`: portable regression tests.
 
 ## Roadmap
 
-Le prossime milestone previste sono:
+Planned milestones include:
 
-1. ulteriori proiezioni cartografiche;
-2. export video delle animazioni e controllo della velocita;
-3. ricette di plot, profili multipli e transect;
-4. lettura asincrona nativa quando il runtime offre primitive compatibili;
-5. benchmark automatici su dataset NetCDF di grandi dimensioni.
+1. additional map projections;
+2. animation video export and extended playback controls;
+3. plot recipes, multi-profile workflows, and transects;
+4. native asynchronous reading where supported by the runtime;
+5. automated benchmarks for large NetCDF datasets.
 
-## Licenza
+## License
 
-MCVIEW e distribuito con licenza MIT. Vedere [LICENSE](LICENSE).
+MCVIEW is distributed under the MIT License. See [LICENSE](LICENSE).
