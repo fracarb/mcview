@@ -1,0 +1,34 @@
+name: MATLAB and Octave CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  octave:
+    name: GNU Octave
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Install Octave dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y octave octave-netcdf xvfb
+      - name: Run core tests
+        run: octave --quiet --eval "addpath('tests'); run_tests"
+      - name: Run GUI smoke test
+        run: xvfb-run -a octave --quiet --eval "graphics_toolkit('qt'); addpath('tests'); run_gui_smoke_test"
+
+  matlab:
+    name: MATLAB
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v3
+      - name: Run tests
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('tests'); run_tests; run_gui_smoke_test
