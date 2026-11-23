@@ -16,7 +16,8 @@ Questa prima versione e un MVP funzionante. Permette di:
 - aprire piu file, ordinarli dalla coordinata temporale e concatenare
   automaticamente variabili compatibili lungo tempo;
 - leggere ricorsivamente variabili nei gruppi NetCDF4;
-- elencare le variabili usando il percorso completo, ad esempio `/ocean/temp`;
+- esplorare variabili e sottogruppi NetCDF4 in un albero espandibile e
+  comprimibile, preservando percorsi completi come `/ocean/temp`;
 - mantenere assi vuoti finche non viene scelta esplicitamente una variabile;
 - visualizzare scalari, serie 1D e campi 2D;
 - scegliere liberamente le dimensioni X e Y;
@@ -40,6 +41,9 @@ Questa prima versione e un MVP funzionante. Permette di:
 - mostrare nomi estesi e unita di misura sugli assi e sulla variabile;
 - etichettare la colorbar con nome della variabile e unita di misura;
 - convertire assi temporali CF come `days since 2000-01-01` in date leggibili;
+- rappresentare correttamente calendari CF non gregoriani `360_day`,
+  `noleap`/`365_day` e `all_leap`/`366_day`, senza convertirli in date
+  gregoriane inesatte;
 - consultare attributi globali, di variabile e delle coordinate;
 - riconoscere packing, `_FillValue`, `missing_value`, `valid_min/max/range`;
 - cambiare colormap e impostare limiti colore automatici o manuali;
@@ -154,6 +158,8 @@ richiedere un MATLAB batch licensing token.
 - `+mcv/readVariableSlice.m`: selezione e lettura NetCDF;
 - `+mcv/mergeDatasetInfos.m`: catalogo e concatenazione multi-file;
 - `+mcv/flattenDatasetInfo.m`: scansione ricorsiva dei gruppi NetCDF4;
+- `+mcv/variableTreeRows.m`: albero portabile di gruppi e variabili;
+- `+mcv/decodeCFTime.m`: calendari temporali gregoriani e CF non gregoriani;
 - `+mcv/computeVariableRange.m`: range globali e campionamento rapido;
 - `+mcv/prepareGeographicSlice.m`: dateline e proiezione geografica;
 - `+mcv/coastlineData.m`: caricamento delle coste Natural Earth;
@@ -169,13 +175,11 @@ richiedere un MATLAB batch licensing token.
 
 Le prossime milestone previste sono:
 
-1. browser gerarchico ad albero per gruppi NetCDF gia supportati dal reader;
-2. calendari CF non gregoriani (`360_day`, `noleap`, `all_leap`);
-3. ulteriori proiezioni cartografiche;
-4. export video delle animazioni e controllo della velocita;
-5. ricette di plot, profili multipli e transect;
-6. lettura asincrona nativa quando il runtime offre primitive compatibili;
-7. benchmark automatici su dataset NetCDF di grandi dimensioni.
+1. ulteriori proiezioni cartografiche;
+2. export video delle animazioni e controllo della velocita;
+3. ricette di plot, profili multipli e transect;
+4. lettura asincrona nativa quando il runtime offre primitive compatibili;
+5. benchmark automatici su dataset NetCDF di grandi dimensioni.
 
 ## Licenza
 

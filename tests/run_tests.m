@@ -259,6 +259,7 @@ function testNetcdfGroups()
     info = mcv.readDatasetInfo(filename);
     paths = variablePaths(info.Variables);
     assert(any(strcmp(paths, '/ocean/x')));
+    assert(any(strcmp(paths, '/ocean/nested/salt')));
     temperatureIndex = find(strcmp(paths, '/ocean/temperature'), 1);
     assert(~isempty(temperatureIndex));
     variableInfo = info.Variables(temperatureIndex);
@@ -275,6 +276,24 @@ function testNetcdfGroups()
     assert(isequal(sampleData(:), [7; 8; 9]));
     assert(isequal(auxiliaryCoordinate, [42, 43, 44]));
     assert(strcmp(sampleAxes.x.units, 'degrees_east'));
+
+    [treeLabels, treeVariables, treeGroups, expandedGroups] = ...
+        mcv.variableTreeRows(info);
+    oceanRow = find(strcmp(treeGroups, '/ocean'), 1);
+    nestedRow = find(strcmp(treeGroups, '/ocean/nested'), 1);
+    saltIndex = find(strcmp(paths, '/ocean/nested/salt'), 1);
+    assert(~isempty(oceanRow) && ~isempty(nestedRow));
+    assert(~isempty(strfind(treeLabels{oceanRow}, '[-] ocean'))); %#ok<STREMP>
+    assert(~isempty(strfind(treeLabels{nestedRow}, '[-] nested'))); %#ok<STREMP>
+    assert(any(treeVariables == saltIndex));
+
+    collapsedGroups = expandedGroups( ...
+        ~strcmp(expandedGroups, '/ocean/nested'));
+    [collapsedLabels, collapsedVariables, collapsedPaths] = ...
+        mcv.variableTreeRows(info, collapsedGroups);
+    nestedRow = find(strcmp(collapsedPaths, '/ocean/nested'), 1);
+    assert(~isempty(strfind(collapsedLabels{nestedRow}, '[+] nested'))); %#ok<STREMP>
+    assert(~any(collapsedVariables == saltIndex));
 end
 
 function testMultiFileConcatenation()
@@ -326,16 +345,39 @@ function testMultiFileConcatenation()
 end
 
 function testCFTime()
-    [dates, isTime] = mcv.decodeCFTime( ...
+    [dates, isTime, labels, isNonGregorian] = mcv.decodeCFTime( ...
         [0, 1.5], 'days since 2000-01-01 00:00:00', 'standard');
     assert(isTime);
+    assert(~isNonGregorian);
     assert(abs(dates(1) - datenum(2000, 1, 1)) < 1e-10);
     assert(abs((dates(2) - dates(1)) - 1.5) < 1e-10);
+    assert(strcmp(labels{2}, '2000-01-02 12:00:00'));
 
-    [unchanged, isTime] = mcv.decodeCFTime( ...
-        [0, 30], 'days since 2000-01-01', '360_day');
-    assert(~isTime);
-    assert(isequal(unchanged, [0, 30]));
+    [calendar360, isTime, labels360, isNonGregorian] = mcv.decodeCFTime( ...
+        [0, 1, 2, 31, 360], 'days since 2000-01-30', '360_day');
+    assert(isTime && isNonGregorian);
+    assert(isequal(diff(calendar360), [1, 1, 29, 329]));
+    assert(strcmp(labels360{1}, '2000-01-30 00:00:00'));
+    assert(strcmp(labels360{2}, '2000-02-01 00:00:00'));
+    assert(strcmp(labels360{4}, '2000-03-01 00:00:00'));
+    assert(strcmp(labels360{5}, '2001-01-30 00:00:00'));
+
+    [~, isTime, noLeapLabels, isNonGregorian] = mcv.decodeCFTime( ...
+        [0, 1, 2, 365], 'days since 2000-02-28', 'noleap');
+    assert(isTime && isNonGregorian);
+    assert(strcmp(noLeapLabels{2}, '2000-03-01 00:00:00'));
+    assert(strcmp(noLeapLabels{4}, '2001-02-28 00:00:00'));
+
+    [~, isTime, allLeapLabels, isNonGregorian] = mcv.decodeCFTime( ...
+        [0, 1, 2, 366], 'days since 2001-02-28', 'all_leap');
+    assert(isTime && isNonGregorian);
+    assert(strcmp(allLeapLabels{2}, '2001-02-29 00:00:00'));
+    assert(strcmp(allLeapLabels{3}, '2001-03-01 00:00:00'));
+    assert(strcmp(allLeapLabels{4}, '2002-02-28 00:00:00'));
+
+    [~, invalidTime] = mcv.decodeCFTime( ...
+        0, 'days since 2000-01-31', '360_day');
+    assert(~invalidTime);
 end
 
 function testDimensionSelection()
@@ -399,6 +441,12 @@ function testNetcdfRead()
     ncwriteatt(filename, 'time', 'standard_name', 'time');
     ncwriteatt(filename, 'time', 'axis', 'T');
 
+    nccreate(filename, 'model_time', 'Dimensions', {'model_time', 3});
+    ncwrite(filename, 'model_time', [0; 1; 31]);
+    ncwriteatt(filename, 'model_time', 'units', 'days since 2000-01-30');
+    ncwriteatt(filename, 'model_time', 'calendar', '360_day');
+    ncwriteatt(filename, 'model_time', 'axis', 'T');
+
     nccreate(filename, 'depth', 'Dimensions', {'depth', 2});
     ncwrite(filename, 'depth', [0; 100]);
     ncwriteatt(filename, 'depth', 'units', 'm');
@@ -450,6 +498,15 @@ function testNetcdfRead()
     decodedTime = mcv.readAxis(filename, info, timeInfo.Dimensions(1), 2);
     assert(decodedTime.isTime);
     assert(abs(diff(decodedTime.plotValues) - 1) < 1e-10);
+
+    modelTimeInfo = info.Variables(strcmp(names, 'model_time'));
+    modelTime = mcv.readAxis( ...
+        filename, info, modelTimeInfo.Dimensions(1), 3, modelTimeInfo);
+    assert(modelTime.isTime && modelTime.isNonGregorianTime);
+    assert(strcmp(modelTime.timeLabels{2}, '2000-02-01 00:00:00'));
+    assert(strcmp(modelTime.timeLabels{3}, '2000-03-01 00:00:00'));
+    assert(strcmp(mcv.formatAxisValue(modelTime, 3), ...
+        '2000-03-01 00:00:00'));
 
     volumeInfo = info.Variables(strcmp(names, 'volume'));
     mapping = mcv.findSpatialDimensions(info, volumeInfo);
@@ -519,6 +576,10 @@ function createGroupedDataset(filename)
             groupId, 'longitude', 'NC_DOUBLE', auxiliaryDimensionId);
         sampleId = netcdf_defVar( ...
             groupId, 'sample', 'NC_DOUBLE', auxiliaryDimensionId);
+        nestedGroupId = netcdf_defGrp(groupId, 'nested');
+        nestedDimensionId = netcdf_defDim(nestedGroupId, 'z', 2);
+        saltId = netcdf_defVar( ...
+            nestedGroupId, 'salt', 'NC_DOUBLE', nestedDimensionId);
         netcdf_putAtt(groupId, coordinateId, 'units', 'km');
         netcdf_putAtt(groupId, coordinateId, 'axis', 'X');
         netcdf_putAtt(groupId, longitudeId, 'units', 'degrees_east');
@@ -529,6 +590,7 @@ function createGroupedDataset(filename)
         netcdf_putVar(groupId, temperatureId, [4, 5, 6]);
         netcdf_putVar(groupId, longitudeId, [42, 43, 44]);
         netcdf_putVar(groupId, sampleId, [7, 8, 9]);
+        netcdf_putVar(nestedGroupId, saltId, [30, 31]);
         netcdf_close(ncid);
     else
         nccreate(filename, '/ocean/x', 'Dimensions', {'x', 3});
@@ -544,6 +606,8 @@ function createGroupedDataset(filename)
         nccreate(filename, '/ocean/sample', 'Dimensions', {'i', 3});
         ncwrite(filename, '/ocean/sample', [7; 8; 9]);
         ncwriteatt(filename, '/ocean/sample', 'coordinates', 'longitude');
+        nccreate(filename, '/ocean/nested/salt', 'Dimensions', {'z', 2});
+        ncwrite(filename, '/ocean/nested/salt', [30; 31]);
     end
 end
 

@@ -96,13 +96,14 @@ function figureHandle = createViewer(environment, initialFilename)
         'Units', 'normalized', 'Position', layout.fileText, ...
         'HorizontalAlignment', 'left', 'BackgroundColor', background);
 
-    uicontrol(figureHandle, 'Style', 'text', 'String', 'Variabili', ...
+    uicontrol(figureHandle, 'Style', 'text', 'String', 'Variabili / gruppi', ...
         'Units', 'normalized', 'Position', layout.variablesLabel, ...
         'HorizontalAlignment', 'left', 'FontWeight', 'bold', ...
         'ForegroundColor', accent, 'BackgroundColor', background);
     handles.variableList = uicontrol(figureHandle, ...
         'Style', 'listbox', 'String', {'(apri un file)'}, ...
         'Units', 'normalized', 'Position', layout.variableList, ...
+        'TooltipString', 'Seleziona una variabile o espandi un gruppo [+]', ...
         'Callback', @onVariableChanged, 'BackgroundColor', [1, 1, 1]);
 
     uicontrol(figureHandle, 'Style', 'text', 'String', 'Asse X', ...
@@ -319,6 +320,9 @@ function figureHandle = createViewer(environment, initialFilename)
     state.filename = '';
     state.info = [];
     state.variableIndex = 0;
+    state.variableTreeExpanded = {};
+    state.variableTreeVariableIndices = 0;
+    state.variableTreeGroupPaths = {''};
     state.xDimension = 0;
     state.yDimension = 0;
     state.cutDimension = 0;
@@ -402,6 +406,11 @@ function figureHandle = createViewer(environment, initialFilename)
             current.filename = datasetSource;
             current.info = info;
             current.variableIndex = 0;
+            [treeLabels, treeVariableIndices, treeGroupPaths, treeExpanded] = ...
+                mcv.variableTreeRows(info);
+            current.variableTreeExpanded = treeExpanded;
+            current.variableTreeVariableIndices = treeVariableIndices;
+            current.variableTreeGroupPaths = treeGroupPaths;
             current.xDimension = 0;
             current.yDimension = 0;
             current.indices = [];
@@ -422,15 +431,7 @@ function figureHandle = createViewer(environment, initialFilename)
             current.rangeCacheValues = {};
             guidata(figureHandle, current);
 
-            variableNames = {'(nessuna variabile)'};
-            if ~isempty(info.Variables)
-                if isfield(info.Variables, 'DisplayName')
-                    variableNames = [variableNames, {info.Variables.DisplayName}];
-                else
-                    variableNames = [variableNames, {info.Variables.Name}];
-                end
-            end
-            set(handles.variableList, 'String', variableNames, 'Value', 1);
+            set(handles.variableList, 'String', treeLabels, 'Value', 1);
             if iscell(datasetSource)
                 fileLabel = sprintf('%d file: %s', numel(datasetSource), datasetSource{1});
                 fileTooltip = strjoin(datasetSource, sprintf('\n'));
@@ -463,12 +464,50 @@ function figureHandle = createViewer(environment, initialFilename)
 
     function onVariableChanged(source, ~)
         stopPlayback();
-        selectedValue = get(source, 'Value');
-        if selectedValue == 1
+        selectedRow = get(source, 'Value');
+        current = guidata(figureHandle);
+        if selectedRow < 1 || ...
+                selectedRow > numel(current.variableTreeVariableIndices)
+            return;
+        end
+        groupPath = current.variableTreeGroupPaths{selectedRow};
+        if ~isempty(groupPath)
+            match = find(strcmp(current.variableTreeExpanded, groupPath), 1);
+            if isempty(match)
+                current.variableTreeExpanded{end + 1} = groupPath;
+            else
+                current.variableTreeExpanded(match) = [];
+            end
+            guidata(figureHandle, current);
+            rebuildVariableTree(current.variableIndex);
+            return;
+        end
+        variableIndex = current.variableTreeVariableIndices(selectedRow);
+        if variableIndex == 0
             clearVariableSelection();
         else
-            selectVariable(selectedValue - 1);
+            selectVariable(variableIndex);
         end
+    end
+
+    function rebuildVariableTree(selectedVariableIndex)
+        current = guidata(figureHandle);
+        [labels, variableIndices, groupPaths] = mcv.variableTreeRows( ...
+            current.info, current.variableTreeExpanded);
+        current.variableTreeVariableIndices = variableIndices;
+        current.variableTreeGroupPaths = groupPaths;
+        guidata(figureHandle, current);
+
+        selectedRow = find(variableIndices == selectedVariableIndex & ...
+            variableIndices > 0, 1);
+        if isempty(selectedRow)
+            set(handles.variableList, 'String', labels, 'Value', 1);
+            if selectedVariableIndex > 0
+                clearVariableSelection();
+            end
+            return;
+        end
+        set(handles.variableList, 'String', labels, 'Value', selectedRow);
     end
 
     function onShowAttributes(~, ~)
@@ -501,7 +540,10 @@ function figureHandle = createViewer(environment, initialFilename)
         current.indices = ones(1, numel(variableInfo.Dimensions));
         current.clickedPoint = [];
         guidata(figureHandle, current);
-        set(handles.variableList, 'Value', index + 1);
+        selectedRow = find(current.variableTreeVariableIndices == index, 1);
+        if ~isempty(selectedRow)
+            set(handles.variableList, 'Value', selectedRow);
+        end
         set(handles.compareButton, 'Enable', onOff(numel(current.info.Variables) > 1));
         set(handles.planePopup, 'Value', 1);
         updateDimensionControls();
@@ -526,6 +568,7 @@ function figureHandle = createViewer(environment, initialFilename)
         current.clickedPoint = [];
         current.clickedPointLabel = '';
         guidata(figureHandle, current);
+        set(handles.variableList, 'Value', 1);
         set(handles.xPopup, 'String', {'(nessuna)'}, 'Value', 1, 'Enable', 'off');
         set(handles.yPopup, 'String', {'(nessuna)'}, 'Value', 1, 'Enable', 'off');
         set(handles.planePopup, 'Value', 1, 'Enable', 'off');
@@ -760,11 +803,7 @@ function figureHandle = createViewer(environment, initialFilename)
         value = current.indices(dimension);
         axisInfo = mcv.readAxis(current.filename, current.info, ...
             variableInfo.Dimensions(dimension), lengthCurrent, variableInfo);
-        if axisInfo.isTime
-            displayValue = datestr(axisInfo.plotValues(value), 'yyyy-mm-dd HH:MM:SS');
-        else
-            displayValue = num2str(axisInfo.values(value), 8);
-        end
+        displayValue = mcv.formatAxisValue(axisInfo, value, [], 8);
         set(handles.scanLabel, 'String', sprintf( ...
             'Scorri %s: %d/%d', axisInfo.name, value, lengthCurrent), ...
             'TooltipString', sprintf('%s = %s %s', ...
@@ -841,11 +880,7 @@ function figureHandle = createViewer(environment, initialFilename)
         end
         set(handles.fixedEdit, 'Enable', 'on', 'String', editValue);
         if ~isempty(axisInfo.values)
-            if axisInfo.isTime
-                displayValue = datestr(axisInfo.plotValues(value), 'yyyy-mm-dd HH:MM:SS');
-            else
-                displayValue = num2str(axisInfo.values(value), 10);
-            end
+            displayValue = mcv.formatAxisValue(axisInfo, value, [], 10);
             set(handles.fixedEdit, 'TooltipString', sprintf('%s = %s %s', ...
                 axisInfo.name, displayValue, axisInfo.units));
             set(handles.fixedValueText, 'String', sprintf( ...
@@ -1239,6 +1274,7 @@ function figureHandle = createViewer(environment, initialFilename)
                 end
             end
             guidata(figureHandle, current);
+            rebuildVariableTree(newVariableIndex);
             updateDimensionControls();
             if ~fromFollow || grew
                 renderSelection();
@@ -1327,9 +1363,19 @@ function figureHandle = createViewer(environment, initialFilename)
                 elseif current.xDimension > 0
                     axesInfo.x.values = axesInfo.x.values(sampling.xIndices);
                     axesInfo.x.plotValues = axesInfo.x.plotValues(sampling.xIndices);
+                    if isfield(axesInfo.x, 'timeLabels') && ...
+                            ~isempty(axesInfo.x.timeLabels)
+                        axesInfo.x.timeLabels = ...
+                            axesInfo.x.timeLabels(sampling.xIndices);
+                    end
                     if current.yDimension > 0
                         axesInfo.y.values = axesInfo.y.values(sampling.yIndices);
                         axesInfo.y.plotValues = axesInfo.y.plotValues(sampling.yIndices);
+                        if isfield(axesInfo.y, 'timeLabels') && ...
+                                ~isempty(axesInfo.y.timeLabels)
+                            axesInfo.y.timeLabels = ...
+                                axesInfo.y.timeLabels(sampling.yIndices);
+                        end
                     end
                 end
             end
@@ -1507,12 +1553,30 @@ function figureHandle = createViewer(environment, initialFilename)
         end
     end
 
-    function applyDateTicks(axisInfo, axisName)
+    function applyDateTicks(axisInfo, axisName, targetAxes)
         if isempty(axisInfo) || ~axisInfo.isTime
             return;
         end
+        if nargin < 3
+            targetAxes = handles.axes;
+        end
+        if isfield(axisInfo, 'isNonGregorianTime') && ...
+                axisInfo.isNonGregorianTime && ...
+                isfield(axisInfo, 'timeLabels') && ...
+                ~isempty(axisInfo.timeLabels)
+            tickIndices = unique(round(linspace(1, ...
+                numel(axisInfo.plotValues), min(7, numel(axisInfo.plotValues)))));
+            tickValues = axisInfo.plotValues(tickIndices);
+            tickLabels = axisInfo.timeLabels(tickIndices);
+            if strcmpi(axisName, 'x')
+                set(targetAxes, 'XTick', tickValues, 'XTickLabel', tickLabels);
+            else
+                set(targetAxes, 'YTick', tickValues, 'YTickLabel', tickLabels);
+            end
+            return;
+        end
         try
-            datetick(handles.axes, axisName, 'yyyy-mm-dd', 'keeplimits');
+            datetick(targetAxes, axisName, 'yyyy-mm-dd', 'keeplimits');
         catch
             % Il dato rimane correttamente posizionato in unita datenum.
         end
@@ -1688,11 +1752,7 @@ function figureHandle = createViewer(environment, initialFilename)
         axisInfo = mcv.readAxis(current.filename, current.info, ...
             variableInfo.Dimensions(dimension), variableInfo.Size(dimension), variableInfo);
         index = current.indices(dimension);
-        if axisInfo.isTime
-            value = datestr(axisInfo.plotValues(index), 'yyyy-mm-dd HH:MM:SS');
-        else
-            value = num2str(axisInfo.values(index), 8);
-        end
+        value = mcv.formatAxisValue(axisInfo, index, [], 8);
         textValue = sprintf('Frame: %s[%d] = %s %s', ...
             axisInfo.name, index, value, axisInfo.units);
     end
@@ -1740,18 +1800,7 @@ function figureHandle = createViewer(environment, initialFilename)
     end
 
     function textValue = coordinateText(axisInfo, index, secondIndex)
-        if nargin >= 3 && ~isvector(axisInfo.values)
-            rawValue = axisInfo.values(index, secondIndex);
-            plotValue = axisInfo.plotValues(index, secondIndex);
-        else
-            rawValue = axisInfo.values(index);
-            plotValue = axisInfo.plotValues(index);
-        end
-        if axisInfo.isTime
-            valueText = datestr(plotValue, 'yyyy-mm-dd HH:MM:SS');
-        else
-            valueText = num2str(rawValue, 10);
-        end
+        valueText = mcv.formatAxisValue(axisInfo, index, secondIndex, 10);
         if isempty(axisInfo.units)
             textValue = sprintf('%s = %s', axisInfo.name, valueText);
         else
@@ -1816,10 +1865,7 @@ function figureHandle = createViewer(environment, initialFilename)
                 legend(current.profileAxes, labels);
             end
             if profileAxesInfo.x.isTime
-                try
-                    datetick(current.profileAxes, 'x', 'yyyy-mm-dd', 'keeplimits');
-                catch
-                end
+                applyDateTicks(profileAxesInfo.x, 'x', current.profileAxes);
             end
             figure(current.profileFigure);
         catch exception
