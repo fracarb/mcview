@@ -76,6 +76,9 @@ function run_gui_smoke_test()
     assert(isscalar(findobj(viewer, 'Tag', 'mcviewCutNext')));
     assert(isscalar(findobj(viewer, 'Tag', 'mcviewScanDimension')));
     assert(isscalar(findobj(viewer, 'Tag', 'mcviewScanSlider')));
+    exportButton = findobj(viewer, 'Tag', 'mcviewExport');
+    assert(isscalar(exportButton));
+    assert(strcmp(get(exportButton, 'String'), 'Esporta...'));
     close(viewer);
     fprintf('MCVIEW: smoke test grafico completato.\n');
 end

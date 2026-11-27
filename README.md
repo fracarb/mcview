@@ -58,7 +58,8 @@ MCVIEW currently provides:
 - longitude/latitude and Mercator views with Natural Earth 1:10m coastlines,
   including small islands, without requiring the Mapping Toolbox;
 - optional coastline display and selectable coastline colors;
-- PNG export;
+- PNG export and direct export of the current slice, selected snapshots, or a
+  complete variable to the MATLAB/Octave base workspace;
 - display of data type, range, mean, and the current `start`/`count` selection.
 
 ## Requirements

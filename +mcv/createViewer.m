@@ -280,9 +280,10 @@ function figureHandle = createViewer(environment, initialFilename)
         'TooltipString', 'Affianca, sottrai o dividi una seconda variabile', ...
         'Callback', @onCompare);
     handles.exportButton = uicontrol(figureHandle, ...
-        'Style', 'pushbutton', 'String', 'Esporta PNG', ...
+        'Style', 'pushbutton', 'String', 'Esporta...', 'Tag', 'mcviewExport', ...
         'Units', 'normalized', 'Position', layout.exportButton, ...
-        'Callback', @onExportImage);
+        'TooltipString', 'Esporta la vista o la variabile selezionata', ...
+        'Callback', @onExportMenu);
 
     uicontrol(figureHandle, 'Style', 'text', 'String', 'Mappa', ...
         'Units', 'normalized', 'Position', layout.mapLabel, ...
@@ -2022,6 +2023,272 @@ function figureHandle = createViewer(environment, initialFilename)
         units = mcv.getAttribute(variableInfo, 'units', '');
         if isnumeric(units), units = num2str(units); end
         slice.units = char(units);
+    end
+
+    function onExportMenu(~, ~)
+        options = {'Vista corrente in PNG', 'Variabile nel workspace'};
+        [choice, accepted] = listdlg('ListString', options, ...
+            'SelectionMode', 'single', 'ListSize', [300, 100], ...
+            'Name', 'Esporta', 'PromptString', 'Scegli cosa esportare:');
+        if ~accepted || isempty(choice), return; end
+        if choice == 1
+            onExportImage([], []);
+        else
+            onExportWorkspace();
+        end
+    end
+
+    function onExportWorkspace()
+        current = guidata(figureHandle);
+        if current.variableIndex == 0
+            setStatus('Seleziona prima una variabile da esportare.', true);
+            return;
+        end
+        variableInfo = current.info.Variables(current.variableIndex);
+        dimensionCount = numel(variableInfo.Dimensions);
+        if dimensionCount >= 3
+            modeNames = { ...
+                'Slice corrente a risoluzione nativa', ...
+                'Snapshot selezionati lungo una dimensione', ...
+                'Variabile completa'};
+            modeKeys = {'slice', 'snapshots', 'full'};
+        else
+            modeNames = {'Slice corrente a risoluzione nativa', ...
+                'Variabile completa'};
+            modeKeys = {'slice', 'full'};
+        end
+        [modeIndex, accepted] = listdlg('ListString', modeNames, ...
+            'SelectionMode', 'single', 'ListSize', [390, 145], ...
+            'Name', 'Esporta nel workspace', ...
+            'PromptString', 'Scegli la porzione da importare:');
+        if ~accepted || isempty(modeIndex), return; end
+        mode = modeKeys{modeIndex};
+
+        snapshotDimension = 0;
+        snapshotIndices = [];
+        if strcmp(mode, 'snapshots')
+            [snapshotDimension, snapshotIndices, accepted] = ...
+                chooseWorkspaceSnapshots(current, variableInfo);
+            if ~accepted, return; end
+            elementCount = prod(double(variableInfo.Size)) / ...
+                double(variableInfo.Size(snapshotDimension)) * ...
+                numel(snapshotIndices);
+            outputSize = double(variableInfo.Size(:))';
+            outputSize(snapshotDimension) = numel(snapshotIndices);
+            if ~confirmWorkspaceRead( ...
+                    sprintf('%d snapshot', numel(snapshotIndices)), ...
+                    outputSize, elementCount)
+                return;
+            end
+        elseif strcmp(mode, 'full')
+            outputSize = double(variableInfo.Size(:))';
+            if isempty(outputSize), outputSize = 1; end
+            if ~confirmWorkspaceRead('variabile completa', ...
+                    outputSize, prod(outputSize))
+                return;
+            end
+        end
+
+        defaultName = mcv.workspaceVariableName(mcv.variablePath(variableInfo));
+        [workspaceName, metadataName, accepted] = ...
+            chooseWorkspaceNames(defaultName);
+        if ~accepted, return; end
+
+        setStatus(sprintf('Importazione di %s nel workspace...', ...
+            mcv.variablePath(variableInfo)), false);
+        drawnow();
+        try
+            metadata = workspaceMetadata(current, variableInfo, mode);
+            if strcmp(mode, 'slice')
+                [data, xCoordinate, yCoordinate, selection, axesInfo] = ...
+                    mcv.readVariableSlice(current.filename, current.info, ...
+                    variableInfo, current.xDimension, current.yDimension, ...
+                    current.indices);
+                selection.mode = 'slice';
+                selection.xDimension = current.xDimension;
+                selection.yDimension = current.yDimension;
+                metadata.selection = selection;
+                metadata.xCoordinate = xCoordinate;
+                metadata.yCoordinate = yCoordinate;
+                metadata.axesInfo = axesInfo;
+            elseif strcmp(mode, 'snapshots')
+                [data, selection] = mcv.readVariableSnapshots( ...
+                    current.filename, variableInfo, ...
+                    snapshotDimension, snapshotIndices);
+                metadata.selection = selection;
+                axisInfo = mcv.readAxis(current.filename, current.info, ...
+                    variableInfo.Dimensions(snapshotDimension), ...
+                    variableInfo.Size(snapshotDimension), variableInfo);
+                metadata.snapshotAxis = axisInfo.name;
+                metadata.snapshotUnits = axisInfo.units;
+                metadata.snapshotCoordinates = ...
+                    axisInfo.values(snapshotIndices);
+                if axisInfo.isTime
+                    metadata.snapshotLabels = ...
+                        axisInfo.timeLabels(snapshotIndices);
+                end
+            else
+                rawData = mcv.readVariableData( ...
+                    current.filename, variableInfo, [], []);
+                data = mcv.applyDataConventions(rawData, variableInfo);
+                metadata.selection = struct('mode', 'full', ...
+                    'originalSize', double(variableInfo.Size(:))');
+            end
+            metadata.exportedSize = size(data);
+            assignin('base', workspaceName, data);
+            assignin('base', metadataName, metadata);
+            setStatus(sprintf( ...
+                'Esportati %s (%s) e %s nel workspace.', ...
+                workspaceName, formatByteCount(mcv.estimateBytes(data)), ...
+                metadataName), false);
+        catch exception
+            setStatus(exception.message, true);
+        end
+    end
+
+    function [dimension, indices, accepted] = ...
+            chooseWorkspaceSnapshots(current, variableInfo)
+        dimensionCount = numel(variableInfo.Dimensions);
+        labels = cell(1, dimensionCount);
+        for dimensionIndex = 1:dimensionCount
+            labels{dimensionIndex} = sprintf('%d: %s (%d elementi)', ...
+                dimensionIndex, variableInfo.Dimensions(dimensionIndex).Name, ...
+                variableInfo.Size(dimensionIndex));
+        end
+        initialDimension = current.scanDimension;
+        if initialDimension == 0
+            dimensionNames = {variableInfo.Dimensions.Name};
+            isTimeName = cellfun(@(name) any(strcmpi( ...
+                name, {'time', 't', 'record'})), dimensionNames);
+            initialDimension = find(isTimeName, 1);
+        end
+        if isempty(initialDimension) || initialDimension == 0
+            initialDimension = dimensionCount;
+        end
+        [dimension, accepted] = listdlg('ListString', labels, ...
+            'SelectionMode', 'single', 'InitialValue', initialDimension, ...
+            'ListSize', [360, 180], 'Name', 'Dimensione snapshot', ...
+            'PromptString', 'Scegli la dimensione degli snapshot:');
+        if ~accepted || isempty(dimension)
+            dimension = 0;
+            indices = [];
+            accepted = false;
+            return;
+        end
+        maximum = double(variableInfo.Size(dimension));
+        currentIndex = 1;
+        if numel(current.indices) >= dimension
+            currentIndex = current.indices(dimension);
+        end
+        prompt = sprintf([ ...
+            'Indici lungo %s (1..%d). Esempi: 1, 1:10, ', ...
+            '[1 5 20], all'], ...
+            variableInfo.Dimensions(dimension).Name, maximum);
+        answer = inputdlg(prompt, 'Snapshot da importare', 1, ...
+            {num2str(currentIndex)});
+        if isempty(answer)
+            indices = [];
+            accepted = false;
+            return;
+        end
+        try
+            indices = mcv.parseIndexSelection(answer{1}, maximum);
+            accepted = true;
+        catch exception
+            setStatus(exception.message, true);
+            indices = [];
+            accepted = false;
+        end
+    end
+
+    function accepted = confirmWorkspaceRead(description, outputSize, elementCount)
+        estimatedBytes = double(elementCount) * 8;
+        question = sprintf([ ...
+            'Importare %s?\n\nDimensioni: %s\nMemoria dati stimata: %s\n', ...
+            'Durante la lettura il picco puo essere maggiore.'], ...
+            description, formatDimensions(outputSize), ...
+            formatByteCount(estimatedBytes));
+        answer = questdlg(question, 'Conferma importazione', ...
+            'Importa', 'Annulla', 'Annulla');
+        accepted = strcmp(answer, 'Importa');
+    end
+
+    function [workspaceName, metadataName, accepted] = ...
+            chooseWorkspaceNames(defaultName)
+        answer = inputdlg('Nome della variabile nel workspace:', ...
+            'Esporta nel workspace', 1, {defaultName});
+        if isempty(answer)
+            workspaceName = '';
+            metadataName = '';
+            accepted = false;
+            return;
+        end
+        workspaceName = mcv.workspaceVariableName(answer{1});
+        maximumLength = namelengthmax();
+        metadataBase = workspaceName;
+        if numel(metadataBase) > maximumLength - 5
+            metadataBase = metadataBase(1:maximumLength - 5);
+        end
+        metadataName = [metadataBase, '_info'];
+        dataExists = evalin('base', sprintf( ...
+            'exist(''%s'', ''var'')', workspaceName)) ~= 0;
+        metadataExists = evalin('base', sprintf( ...
+            'exist(''%s'', ''var'')', metadataName)) ~= 0;
+        if dataExists || metadataExists
+            overwrite = questdlg(sprintf([ ...
+                '%s o %s esistono gia nel workspace. Sovrascriverli?'], ...
+                workspaceName, metadataName), ...
+                'Variabile esistente', 'Sovrascrivi', 'Annulla', 'Annulla');
+            if ~strcmp(overwrite, 'Sovrascrivi')
+                accepted = false;
+                return;
+            end
+        end
+        accepted = true;
+    end
+
+    function metadata = workspaceMetadata(current, variableInfo, mode)
+        metadata = struct();
+        metadata.source = current.filename;
+        metadata.path = mcv.variablePath(variableInfo);
+        metadata.name = variableInfo.Name;
+        metadata.longName = mcv.getAttribute( ...
+            variableInfo, 'long_name', variableInfo.Name);
+        metadata.units = mcv.getAttribute(variableInfo, 'units', '');
+        metadata.exportMode = mode;
+        metadata.originalSize = double(variableInfo.Size(:))';
+        if isempty(variableInfo.Dimensions)
+            metadata.dimensionNames = {};
+        else
+            metadata.dimensionNames = {variableInfo.Dimensions.Name};
+        end
+        if isfield(variableInfo, 'Attributes')
+            metadata.attributes = variableInfo.Attributes;
+        else
+            metadata.attributes = struct([]);
+        end
+    end
+
+    function textValue = formatDimensions(dimensions)
+        if isempty(dimensions)
+            textValue = 'scalare';
+            return;
+        end
+        parts = arrayfun(@(value) sprintf('%d', value), ...
+            dimensions, 'UniformOutput', false);
+        textValue = strjoin(parts, ' x ');
+    end
+
+    function textValue = formatByteCount(bytes)
+        if bytes >= 1024 ^ 3
+            textValue = sprintf('%.2f GB', bytes / 1024 ^ 3);
+        elseif bytes >= 1024 ^ 2
+            textValue = sprintf('%.2f MB', bytes / 1024 ^ 2);
+        elseif bytes >= 1024
+            textValue = sprintf('%.2f kB', bytes / 1024);
+        else
+            textValue = sprintf('%d byte', round(bytes));
+        end
     end
 
     function onExportImage(~, ~)

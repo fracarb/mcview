@@ -10,6 +10,7 @@ function run_tests()
     assert(environment.isOctave == mcv.isOctave());
 
     testInputFileResolution();
+    testWorkspaceExportHelpers();
     testDimensionSelection();
     testViewerLayout();
     testCFAxisSelection();
@@ -24,6 +25,28 @@ function run_tests()
 
     fprintf('MCVIEW: tutti i test sono passati su %s %s.\n', ...
         environment.name, environment.version);
+end
+
+function testWorkspaceExportHelpers()
+    assert(isequal(mcv.parseIndexSelection('1:3', 8), 1:3));
+    assert(isequal(mcv.parseIndexSelection('[1 5 3 5]', 8), [1, 5, 3]));
+    assert(isequal(mcv.parseIndexSelection('1:2:7, 8', 8), [1, 3, 5, 7, 8]));
+    assert(isequal(mcv.parseIndexSelection('all', 4), 1:4));
+    assert(isequal(mcv.parseIndexSelection('4:2', 4), 4:-1:2));
+
+    invalidSelectionRaised = false;
+    try
+        mcv.parseIndexSelection('1, 9', 8);
+    catch exception
+        invalidSelectionRaised = strcmp( ...
+            exception.identifier, 'mcview:InvalidIndexSelection');
+    end
+    assert(invalidSelectionRaised);
+    assert(strcmp(mcv.workspaceVariableName('/ocean/air-temp'), ...
+        'ocean_air_temp'));
+    assert(strcmp(mcv.workspaceVariableName('1temperature'), ...
+        'nc_1temperature'));
+    assert(strcmp(mcv.workspaceVariableName('for'), 'nc_for'));
 end
 
 function testInputFileResolution()
@@ -530,6 +553,13 @@ function testNetcdfRead()
         reshape(volume4dExpected(:, 2, :, 2), [4, 2])));
     assert(isequal(selection4d.start, [1, 2, 1, 2]));
     assert(isequal(selection4d.count, [4, 1, 2, 1]));
+
+    [snapshots, snapshotSelection] = mcv.readVariableSnapshots( ...
+        filename, volume4dInfo, 4, [2, 1]);
+    assert(isequal(snapshots, volume4dExpected(:, :, :, [2, 1])));
+    assert(snapshotSelection.snapshotDimension == 4);
+    assert(isequal(snapshotSelection.snapshotIndices, [2, 1]));
+    assert(isequal(snapshotSelection.exportedSize, [4, 3, 2, 2]));
 
     [comparisonX, comparisonY, comparisonIndices] = mcv.matchSliceDimensions( ...
         volumeInfo, variableInfo, 1, 2, [1, 2, 1]);
