@@ -11,11 +11,6 @@ function figureHandle = showComparison(primary, secondary, operation)
         secondAxes = subplot(1, 2, 2, 'Parent', figureHandle);
         drawSlice(firstAxes, primary);
         drawSlice(secondAxes, secondary);
-        commonLimits = combinedLimits(primary.data, secondary.data);
-        if ~isempty(commonLimits) && ~isvector(primary.data)
-            caxis(firstAxes, commonLimits);
-            caxis(secondAxes, commonLimits);
-        end
     else
         if ~isequal(size(primary.data), size(secondary.data))
             error('mcview:IncompatibleComparison', ...
@@ -52,6 +47,10 @@ function drawSlice(targetAxes, slice)
         set(targetAxes, 'YDir', 'normal');
         colorbarHandle = colorbar(targetAxes);
         mcv.setColorbarLabel(colorbarHandle, slice.variableName, slice.units);
+        limits = dataLimits(data);
+        if ~isempty(limits)
+            caxis(targetAxes, limits);
+        end
     end
     xlabel(targetAxes, mcv.axisLabel(slice.axesInfo.x), 'Interpreter', 'none');
     if ~isempty(slice.axesInfo.y)
@@ -93,8 +92,8 @@ function result = sameCoordinate(first, second)
     result = all(abs(double(first(:)) - double(second(:))) <= 1e-10 * scale);
 end
 
-function limits = combinedLimits(first, second)
-    values = [double(first(isfinite(first))); double(second(isfinite(second)))];
+function limits = dataLimits(data)
+    values = double(data(isfinite(data)));
     if isempty(values)
         limits = [];
         return;

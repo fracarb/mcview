@@ -6,6 +6,9 @@ function data = readVariableData(defaultSource, variableInfo, start, count)
         sourcePaths = variableInfo.SourcePaths;
         sourceSizes = variableInfo.SourceSizes;
         concatDimension = variableInfo.ConcatDimension;
+        syntheticConcat = isfield(variableInfo, ...
+            'SyntheticConcatDimension') && ...
+            variableInfo.SyntheticConcatDimension;
     else
         if iscell(defaultSource)
             sourceFiles = defaultSource(1);
@@ -15,6 +18,7 @@ function data = readVariableData(defaultSource, variableInfo, start, count)
         sourcePaths = {mcv.variablePath(variableInfo)};
         sourceSizes = {double(variableInfo.Size(:))'};
         concatDimension = 0;
+        syntheticConcat = false;
     end
 
     if nargin < 3 || isempty(start)
@@ -39,7 +43,11 @@ function data = readVariableData(defaultSource, variableInfo, start, count)
     pieces = {};
     offset = 0;
     for sourceIndex = 1:numel(sourceFiles)
-        localSize = sourceSizes{sourceIndex}(concatDimension);
+        if syntheticConcat
+            localSize = 1;
+        else
+            localSize = sourceSizes{sourceIndex}(concatDimension);
+        end
         sourceFirst = offset + 1;
         sourceLast = offset + localSize;
         overlapFirst = max(firstRequested, sourceFirst);
@@ -49,9 +57,15 @@ function data = readVariableData(defaultSource, variableInfo, start, count)
             localCount = count;
             localStart(concatDimension) = overlapFirst - offset;
             localCount(concatDimension) = overlapLast - overlapFirst + 1;
+            readStart = localStart;
+            readCount = localCount;
+            if syntheticConcat
+                readStart(concatDimension) = [];
+                readCount(concatDimension) = [];
+            end
             piece = ncread(sourceFiles{sourceIndex}, ...
                 mcv.netcdfReadPath(sourcePaths{sourceIndex}), ...
-                localStart, localCount);
+                readStart, readCount);
             piece = reshapeForCount(piece, localCount);
             pieces{end + 1} = piece; %#ok<AGROW>
         end

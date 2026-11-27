@@ -13,8 +13,9 @@ copied from ncview or psyplot.
 MCVIEW currently provides:
 
 - support for `.nc`, `.nc4`, and `.cdf` files;
-- multi-file collections, automatic time-coordinate sorting, and concatenation
-  of compatible variables along the time dimension;
+- multi-file collections, automatic time-coordinate sorting, concatenation
+  along an existing time dimension, and stacking of repeated 2D fields along
+  a virtual `file_index` dimension;
 - recursive reading of variables stored in NetCDF4 groups;
 - an expandable tree browser for NetCDF4 groups and subgroups, while preserving
   full paths such as `/ocean/temp`;
@@ -51,7 +52,9 @@ MCVIEW currently provides:
 - color and Y-axis inversion, low/high-value emphasis, and interpolation;
 - point values obtained by clicking a map cell;
 - up to five overlaid 1D profiles, logarithmic axes, and CSV export;
-- side-by-side variable comparison, difference, and ratio;
+- side-by-side variable comparison, difference, and ratio, synchronized to the
+  same temporal snapshot even when sequence dimensions use different names,
+  with independent color limits for each side-by-side field;
 - longitude/latitude maps, 2D curvilinear grids, and dateline handling;
 - automatic X=longitude and Y=latitude selection from CF metadata, including
   datasets whose dimensions are declared as `lat, lon`;
@@ -135,8 +138,8 @@ run_tests
 
 The tests generate small temporary NetCDF datasets and cover runtime detection,
 coordinates, classic NetCDF files, nested NetCDF4 groups, CF axis selection,
-dimension ordering, 3D planes, non-Gregorian calendars, coastlines, and
-multi-file time concatenation.
+dimension ordering, 3D planes, non-Gregorian calendars, coastlines,
+multi-file time concatenation, and virtual 3D volumes built from 2D files.
 
 Run the graphical smoke test when a graphics backend is available:
 
@@ -156,6 +159,8 @@ batch licensing token.
 - `+mcv/setupEnvironment.m`: MATLAB/Octave compatibility and dependencies;
 - `+mcv/createViewer.m`: portable graphical interface;
 - `+mcv/readVariableSlice.m`: NetCDF selection and slice reading;
+- `+mcv/readComparisonSlices.m`: synchronized temporal comparison reads;
+- `+mcv/findTemporalDimension.m`: CF-aware temporal-axis detection;
 - `+mcv/mergeDatasetInfos.m`: multi-file catalog and concatenation;
 - `+mcv/flattenDatasetInfo.m`: recursive NetCDF4 group traversal;
 - `+mcv/variableTreeRows.m`: portable group and variable tree;

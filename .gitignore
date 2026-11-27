@@ -6,3 +6,4 @@ coverage/
 build/
 tests/data/*.nc
 tests/output/
+Microhh/

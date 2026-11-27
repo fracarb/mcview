@@ -22,6 +22,8 @@ function run_tests()
     testNetcdfGroups();
     testCurvilinearCoordinates();
     testMultiFileConcatenation();
+    testMultiFile2DStack();
+    testTemporalComparison();
 
     fprintf('MCVIEW: tutti i test sono passati su %s %s.\n', ...
         environment.name, environment.version);
@@ -367,6 +369,76 @@ function testMultiFileConcatenation()
     assert(cancelled);
 end
 
+function testMultiFile2DStack()
+    files = cell(1, 3);
+    cleanups = cell(1, 3);
+    for fileIndex = 1:3
+        files{fileIndex} = [tempname(), '.nc'];
+        cleanups{fileIndex} = onCleanup( ...
+            @() deleteIfPresent(files{fileIndex})); %#ok<NASGU>
+        values = reshape(1:6, [2, 3]) + (fileIndex - 1) * 10;
+        create2DFieldDataset(files{fileIndex}, values);
+    end
+
+    info = mcv.readDatasetInfo(files);
+    paths = variablePaths(info.Variables);
+    variableInfo = info.Variables(strcmp(paths, '/temperature'));
+    assert(isequal(double(variableInfo.Size(:))', [2, 3, 3]));
+    assert(variableInfo.ConcatDimension == 3);
+    assert(variableInfo.SyntheticConcatDimension);
+    assert(strcmp(variableInfo.Dimensions(3).Name, 'file_index'));
+
+    xInfo = info.Variables(strcmp(paths, '/x'));
+    yInfo = info.Variables(strcmp(paths, '/y'));
+    assert(isequal(double(xInfo.Size(:))', 2));
+    assert(isequal(double(yInfo.Size(:))', 3));
+    assert(xInfo.ConcatDimension == 0 && yInfo.ConcatDimension == 0);
+
+    [secondField, xCoordinate, yCoordinate, selection] = ...
+        mcv.readVariableSlice(files, info, variableInfo, 1, 2, [1, 1, 2]);
+    assert(isequal(secondField, reshape(11:16, [2, 3])));
+    assert(isequal(xCoordinate, [10, 20]));
+    assert(isequal(yCoordinate, [40, 50, 60]));
+    assert(isequal(selection.start, [1, 1, 2]));
+
+    [xzSlice, ~, fileCoordinate] = mcv.readVariableSlice( ...
+        files, info, variableInfo, 1, 3, [1, 2, 1]);
+    expected = [3, 13, 23; 4, 14, 24];
+    assert(isequal(xzSlice, expected));
+    assert(isequal(fileCoordinate, 1:3));
+
+    fullData = mcv.readVariableData(files, variableInfo, [], []);
+    assert(isequal(size(fullData), [2, 3, 3]));
+    assert(isequal(fullData(:, :, 3), reshape(21:26, [2, 3])));
+
+    secondaryInfo = info.Variables(strcmp(paths, '/humidity'));
+    [primaryComparison, secondaryComparison] = ...
+        mcv.readComparisonSlices(files, info, variableInfo, secondaryInfo, ...
+        1, 2, [1, 1, 3]);
+    assert(primaryComparison.selection.start(3) == 3);
+    assert(secondaryComparison.selection.start(3) == 3);
+    assert(isequal(primaryComparison.data, reshape(21:26, [2, 3])));
+    assert(isequal(secondaryComparison.data, reshape(121:126, [2, 3])));
+end
+
+function testTemporalComparison()
+    filename = [tempname(), '.nc'];
+    cleanup = onCleanup(@() deleteIfPresent(filename)); %#ok<NASGU>
+    createTemporalComparisonDataset(filename);
+
+    info = mcv.readDatasetInfo(filename);
+    names = {info.Variables.Name};
+    primaryInfo = info.Variables(strcmp(names, 'primary'));
+    secondaryInfo = info.Variables(strcmp(names, 'secondary'));
+    [primary, secondary] = mcv.readComparisonSlices( ...
+        filename, info, primaryInfo, secondaryInfo, 1, 2, [1, 1, 2]);
+
+    assert(primary.selection.start(3) == 2);
+    assert(secondary.selection.start(3) == 3);
+    assert(isequal(primary.data, reshape(5:8, [2, 2])));
+    assert(isequal(secondary.data, reshape(109:112, [2, 2])));
+end
+
 function testCFTime()
     [dates, isTime, labels, isNonGregorian] = mcv.decodeCFTime( ...
         [0, 1.5], 'days since 2000-01-01 00:00:00', 'standard');
@@ -431,6 +503,15 @@ function testDimensionSelection()
     [x, y] = mcv.choosePlotDimensions([1, 1]);
     assert(x == 0);
     assert(y == 0);
+
+    reference = comparisonVariable( ...
+        {'x', 'y', 'time'}, [2, 3, 5], 3);
+    target = comparisonVariable( ...
+        {'y', 'x', 'record'}, [3, 2, 5], 3);
+    [comparisonX, comparisonY, comparisonIndices] = ...
+        mcv.matchSliceDimensions(reference, target, 1, 2, [1, 1, 4]);
+    assert(comparisonX == 2 && comparisonY == 1);
+    assert(isequal(comparisonIndices, [1, 1, 4]));
 end
 
 function testSlicePreparation()
@@ -653,4 +734,60 @@ function createTimeDataset(filename, timeValues, temperatureValues)
     nccreate(filename, 'temperature', 'Dimensions', {'x', 2, 'time', 2});
     ncwrite(filename, 'temperature', temperatureValues);
     ncwriteatt(filename, 'temperature', 'units', 'K');
+end
+
+function create2DFieldDataset(filename, temperatureValues)
+    nccreate(filename, 'x', 'Dimensions', {'x', 2});
+    ncwrite(filename, 'x', [10; 20]);
+    ncwriteatt(filename, 'x', 'axis', 'X');
+    nccreate(filename, 'y', 'Dimensions', {'y', 3});
+    ncwrite(filename, 'y', [40; 50; 60]);
+    ncwriteatt(filename, 'y', 'axis', 'Y');
+    nccreate(filename, 'temperature', ...
+        'Dimensions', {'x', 2, 'y', 3});
+    ncwrite(filename, 'temperature', temperatureValues);
+    ncwriteatt(filename, 'temperature', 'units', 'K');
+    nccreate(filename, 'humidity', ...
+        'Dimensions', {'x', 2, 'y', 3});
+    ncwrite(filename, 'humidity', temperatureValues + 100);
+    ncwriteatt(filename, 'humidity', 'units', 'kg kg-1');
+end
+
+function variableInfo = comparisonVariable(names, sizes, concatDimension)
+    dimensions = repmat( ...
+        struct('Name', '', 'Length', 0, 'Unlimited', false), ...
+        1, numel(names));
+    for dimensionIndex = 1:numel(names)
+        dimensions(dimensionIndex).Name = names{dimensionIndex};
+        dimensions(dimensionIndex).Length = sizes(dimensionIndex);
+    end
+    variableInfo = struct( ...
+        'Dimensions', dimensions, ...
+        'Size', sizes, ...
+        'ConcatDimension', concatDimension);
+end
+
+function createTemporalComparisonDataset(filename)
+    nccreate(filename, 'x', 'Dimensions', {'x', 2});
+    ncwrite(filename, 'x', [1; 2]);
+    ncwriteatt(filename, 'x', 'axis', 'X');
+    nccreate(filename, 'y', 'Dimensions', {'y', 2});
+    ncwrite(filename, 'y', [1; 2]);
+    ncwriteatt(filename, 'y', 'axis', 'Y');
+
+    nccreate(filename, 'time_primary', 'Dimensions', {'time_primary', 3});
+    ncwrite(filename, 'time_primary', [0; 1; 2]);
+    ncwriteatt(filename, 'time_primary', 'axis', 'T');
+    ncwriteatt(filename, 'time_primary', 'units', 'days since 2000-01-01');
+    nccreate(filename, 'time_secondary', 'Dimensions', {'time_secondary', 3});
+    ncwrite(filename, 'time_secondary', [2; 0; 1]);
+    ncwriteatt(filename, 'time_secondary', 'axis', 'T');
+    ncwriteatt(filename, 'time_secondary', 'units', 'days since 2000-01-01');
+
+    nccreate(filename, 'primary', ...
+        'Dimensions', {'x', 2, 'y', 2, 'time_primary', 3});
+    ncwrite(filename, 'primary', reshape(1:12, [2, 2, 3]));
+    nccreate(filename, 'secondary', ...
+        'Dimensions', {'x', 2, 'y', 2, 'time_secondary', 3});
+    ncwrite(filename, 'secondary', reshape(101:112, [2, 2, 3]));
 end

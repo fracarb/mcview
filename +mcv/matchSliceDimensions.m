@@ -1,6 +1,11 @@
 function [xDimension, yDimension, indices] = matchSliceDimensions( ...
-        referenceVariable, targetVariable, referenceX, referenceY, referenceIndices)
+        referenceVariable, targetVariable, referenceX, referenceY, ...
+        referenceIndices, datasetInfo)
 %MATCHSLICEDIMENSIONS Allinea una variabile alle dimensioni della vista.
+
+    if nargin < 6
+        datasetInfo = [];
+    end
 
     referenceNames = dimensionNames(referenceVariable);
     targetNames = dimensionNames(targetVariable);
@@ -12,6 +17,18 @@ function [xDimension, yDimension, indices] = matchSliceDimensions( ...
             indices(targetIndex) = min( ...
                 referenceIndices(referenceIndex), targetVariable.Size(targetIndex));
         end
+    end
+
+    % Le dimensioni temporali concatenate possono avere nomi diversi
+    % (time, record, t oppure file_index). In quel caso il semplice match
+    % per nome lascerebbe la variabile secondaria sul primo snapshot.
+    referenceSequence = mcv.findTemporalDimension(datasetInfo, referenceVariable);
+    targetSequence = mcv.findTemporalDimension(datasetInfo, targetVariable);
+    if referenceSequence > 0 && targetSequence > 0 && ...
+            referenceSequence <= numel(referenceIndices)
+        indices(targetSequence) = min( ...
+            referenceIndices(referenceSequence), ...
+            targetVariable.Size(targetSequence));
     end
 
     xDimension = matchingDimension(referenceNames, targetNames, referenceX);
